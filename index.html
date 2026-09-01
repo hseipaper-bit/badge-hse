@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vérification Badge HSE</title>
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; display: flex; justify-content: center; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 100%; }
+    .status-ok { border: 3px solid #166534; background-color: #f0fdf4; }
+    .status-error { border: 3px solid #dc2626; background-color: #fef2f2; }
+    h1 { margin-bottom: 10px; font-size: 22px; }
+    p { margin: 8px 0; color: #334155; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div id="result" class="card">
+    <p>Vérification du badge en cours...</p>
+  </div>
+
+  <script>
+    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQPi7vuryPT7vO_dm3uN_lzEAz6jo4jee3PFwP7p0ACeo57jJ6IOfjxVM55Mpsl8dIT9z6AFK25Vzae/pub?gid=735833020&single=true&output=csv";
+
+    function getParam(param) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(param);
+    }
+
+    const idRecherche = getParam('id');
+
+    if (!idRecherche) {
+      document.getElementById('result').innerHTML = "<h1 style='color:#dc2626;'>❌ ACCÈS REFUSÉ</h1><p>Aucun identifiant de badge fourni.</p>";
+      document.getElementById('result').className = "card status-error";
+    } else {
+      fetch(csvUrl)
+        .then(response => response.text())
+        .then(data => {
+          const rows = data.split('\n');
+          let trouve = false;
+          let dateRecord = "";
+
+          for (let i = 0; i < rows.length; i++) {
+            const cols = rows[i].split(',');
+            // Recherche de l'ID_Key dans les colonnes
+            if (cols.some(cell => cell.trim().replace(/"/g, '') === idRecherche.trim())) {
+              trouve = true;
+              dateRecord = cols[0].replace(/"/g, '');
+              break;
+            }
+          }
+
+          if (trouve) {
+            document.getElementById('result').className = "card status-ok";
+            document.getElementById('result').innerHTML = `
+              <h1 style='color:#166534;'>✔ ACCÈS AUTORISÉ</h1>
+              <p style='color:#15803d; font-weight:bold;'>CONFORMITÉ HSE VALIDÉE</p>
+              <hr style='border:1px solid #bbf7d0; margin: 15px 0;'/>
+              <p style='text-align:left;'><b>ID Badge :</b> ${idRecherche}</p>
+              <p style='text-align:left;'><b>Date d'enregistrement :</b> ${dateRecord}</p>
+            `;
+          } else {
+            document.getElementById('result').className = "card status-error";
+            document.getElementById('result').innerHTML = `
+              <h1 style='color:#dc2626;'>❌ ACCÈS REFUSÉ</h1>
+              <p>Badge <b>${idRecherche}</b> non trouvé ou non valide dans le système.</p>
+            `;
+          }
+        })
+        .catch(error => {
+          document.getElementById('result').className = "card status-error";
+          document.getElementById('result').innerHTML = "<h1 style='color:#dc2626;'>Erreur</h1><p>Impossible d'accéder aux données de vérification.</p>";
+        });
+    }
+  </script>
+</body>
+</html>
