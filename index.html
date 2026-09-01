@@ -35,8 +35,8 @@
     const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQPi7vuryPT7vO_dm3uN_lzEAz6jo4jee3PFwP7p0ACeo57jJ6IOfjxVM55Mpsl8dIT9z6AFK25Vzae/pub?single=true&output=csv";
 
     // GID des deux feuilles
-    const gidFeuille1 = "0";          // Feuille 1 : Assurances Sociétés (Par défaut 0)
-    const gidFeuille2 = "735833020";  // Feuille 2 : Intervenants & Habilitations
+    const gidFeuille1 = "0";          // Feuille 1 : Sociétés / Assurances
+    const gidFeuille2 = "735833020";  // Feuille 2 : Intervenants / Habilitations
 
     const csvUrlFeuille1 = `${baseUrl}&gid=${gidFeuille1}`;
     const csvUrlFeuille2 = `${baseUrl}&gid=${gidFeuille2}`;
@@ -116,7 +116,6 @@
         <p>Aucun identifiant de badge fourni.</p>
       `;
     } else {
-      // Téléchargement simultané des 2 feuilles CSV
       Promise.all([
         fetch(csvUrlFeuille1).then(res => {
           if (!res.ok) throw new Error("Erreur chargement Feuille 1");
@@ -141,7 +140,7 @@
         }
 
         if (rowIntervenant) {
-          // Mapping Feuille 2
+          // Mapping Feuille 2 (Intervenant)
           const societe             = rowIntervenant[2]  || "N/A"; 
           const nomPrenom           = rowIntervenant[3]  || "N/A"; 
           const photoRaw            = rowIntervenant[5]  || "";    
@@ -152,10 +151,10 @@
           const expTravailChaud     = rowIntervenant[15] || "";
           const dateInductionSite   = rowIntervenant[17] || ""; 
 
-          // 2. Recherche de la société correspondante dans la Feuille 1
+          // 2. Recherche de la société dans la Feuille 1 (Index 1 = Raison Sociale)
           let rowSociete = null;
           for (let j = 0; j < rowsFeuille1.length; j++) {
-            if (rowsFeuille1[j][2] && rowsFeuille1[j][2].toLowerCase() === societe.toLowerCase()) {
+            if (rowsFeuille1[j][1] && rowsFeuille1[j][1].toLowerCase() === societe.toLowerCase()) {
               rowSociete = rowsFeuille1[j];
               break;
             }
@@ -163,17 +162,18 @@
 
           const motifsRefus = [];
 
-          // 3. Vérification Assurances Société (Feuille 1)
+          // 3. Vérification uniquement des assurances RC et AT de la Société (Feuille 1)
           if (rowSociete) {
             const expAssuranceRC = rowSociete[5] || "";
             const expAssuranceAT = rowSociete[7] || "";
+
             verifierDoc(expAssuranceRC, `Assurance RC Société (${societe})`, motifsRefus);
             verifierDoc(expAssuranceAT, `Assurance AT Société (${societe})`, motifsRefus);
           } else {
-            motifsRefus.push(`Société "${societe}" non trouvée dans le registre Assurances`);
+            motifsRefus.push(`Société "${societe}" non trouvée dans la base des Assurances`);
           }
 
-          // 4. Vérification Habilitations Intervenant (Feuille 2)
+          // 4. Vérification des habilitations individuelles (Feuille 2)
           verifierDoc(expAptitudePhysique, "Aptitude Physique", motifsRefus);
           verifierDoc(expHabElectrique, "Habilitation Électrique", motifsRefus);
           verifierDoc(expHabHauteur, "Habilitation Travail en Hauteur", motifsRefus);
@@ -235,7 +235,7 @@
         document.getElementById('result').innerHTML = `
           <div class="status-badge status-error">ERREUR SYSTÈME</div>
           <h1 style="color:#b91c1c;">Erreur</h1>
-          <p>Impossible de vérifier l'état du badge. Vérifiez la publication des feuilles CSV sur le Web.</p>
+          <p>Impossible de vérifier l'état du badge. Assurez-vous que les deux feuilles sont bien publiées en CSV sur le Web.</p>
         `;
       });
     }
