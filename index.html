@@ -32,11 +32,9 @@
       return urlParams.get(param);
     }
 
-    // Convertit les liens Google Drive en URL d'image affichable publiquement
     function formatDriveImageUrl(url) {
       if (!url) return "https://via.placeholder.com/120?text=Pas+de+Photo";
       
-      // Extraction de l'ID du fichier Google Drive
       let fileId = "";
       const matchId = url.match(/id=([a-zA-Z0-9_-]+)/);
       const matchPath = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
@@ -79,12 +77,11 @@
           }
 
           if (trouve) {
-            // INVERSION CORRIGÉE SELON VOTRE STRUCTURE :
-            const societe       = rowData[2] || "N/A"; // Colonne C : Société
-            const nomPrenom     = rowData[3] || "N/A"; // Colonne D : Nom & Prénom
-            const dateFormation = rowData[4] || "N/A"; // Colonne E : Date de formation
-            const photoRaw      = rowData[5] || "";    // Colonne F : Photo Drive
-            
+            const societe       = rowData[2] || "N/A";  // Colonne C : Société
+            const nomPrenom     = rowData[3] || "N/A";  // Colonne D : Nom & Prénom
+            const dateFormation = rowData[17] || "N/A"; // Colonne R : Date_Induction_Site (Index 17)
+            const photoRaw      = rowData[5] || "";     // Colonne F : Photo
+
             const photoUrl = formatDriveImageUrl(photoRaw);
 
             document.getElementById('result').innerHTML = `
