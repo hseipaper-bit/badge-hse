@@ -31,14 +31,21 @@
   </div>
 
   <script>
-    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQPi7vuryPT7vO_dm3uN_lzEAz6jo4jee3PFwP7p0ACeo57jJ6IOfjxVM55Mpsl8dIT9z6AFK25Vzae/pub?gid=735833020&single=true&output=csv";
+    // URL de base de votre Google Sheet publié en CSV
+    const baseUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQPi7vuryPT7vO_dm3uN_lzEAz6jo4jee3PFwP7p0ACeo57jJ6IOfjxVM55Mpsl8dIT9z6AFK25Vzae/pub?single=true&output=csv";
+
+    // Modifiez ici avec le GID exact de la Feuille 1 (Assurances Sociétés)
+    const gidFeuille1 = "VOTRE_GID_FEUILLE_1"; 
+    const gidFeuille2 = "735833020"; // Feuille 2 : Intervenants
+
+    const csvUrlFeuille1 = `${baseUrl}&gid=${gidFeuille1}`;
+    const csvUrlFeuille2 = `${baseUrl}&gid=${gidFeuille2}`;
 
     function getParam(param) {
       const urlParams = new URLSearchParams(window.location.search);
       return urlParams.get(param);
     }
 
-    // Formatage fiable de l'image Drive avec anti-cache (evite le blocage apres scans multiples)
     function formatDriveImageUrl(url) {
       if (!url || url.trim() === "" || url === "N/A") {
         return "https://via.placeholder.com/120?text=Pas+de+Photo";
@@ -96,6 +103,10 @@
       }
     }
 
+    function parseCSV(data) {
+      return data.split('\n').map(row => row.split(',').map(c => c.trim().replace(/"/g, '')));
+    }
+
     const idRecherche = getParam('id');
 
     if (!idRecherche) {
@@ -105,104 +116,122 @@
         <p>Aucun identifiant de badge fourni.</p>
       `;
     } else {
-      fetch(csvUrl)
-        .then(response => response.text())
-        .then(data => {
-          const rows = data.split('\n');
-          let trouve = false;
-          let rowData = null;
+      // Téléchargement simultané des deux feuilles
+      Promise.all([
+        fetch(csvUrlFeuille1).then(res => res.text()),
+        fetch(csvUrlFeuille2).then(res => res.text())
+      ])
+      .then(([csvData1, csvData2]) => {
+        const rowsFeuille1 = parseCSV(csvData1);
+        const rowsFeuille2 = parseCSV(csvData2);
 
-          for (let i = 0; i < rows.length; i++) {
-            const cols = rows[i].split(',').map(c => c.trim().replace(/"/g, ''));
-            if (cols.includes(idRecherche.trim())) {
-              trouve = true;
-              rowData = cols;
+        // 1. Recherche de l'intervenant dans la Feuille 2
+        let rowIntervenant = null;
+        for (let i = 0; i < rowsFeuille2.length; i++) {
+          if (rowsFeuille2[i].includes(idRecherche.trim())) {
+            rowIntervenant = rowsFeuille2[i];
+            break;
+          }
+        }
+
+        if (rowIntervenant) {
+          const societe             = rowIntervenant[2]  || "N/A"; 
+          const nomPrenom           = rowIntervenant[3]  || "N/A"; 
+          const photoRaw            = rowIntervenant[5]  || "";    
+          const expAptitudePhysique = rowIntervenant[7]  || ""; 
+          const expHabElectrique    = rowIntervenant[9]  || "";
+          const expHabHauteur       = rowIntervenant[11] || "";
+          const expCACES            = rowIntervenant[13] || "";
+          const expTravailChaud     = rowIntervenant[15] || "";
+          const dateInductionSite   = rowIntervenant[17] || ""; 
+
+          // 2. Recherche de la société correspondante dans la Feuille 1
+          let rowSociete = null;
+          for (let j = 0; j < rowsFeuille1.length; j++) {
+            // Comparaison de la Raison Sociale (normalisée sans casse)
+            if (rowsFeuille1[j][2] && rowsFeuille1[j][2].toLowerCase() === societe.toLowerCase()) {
+              rowSociete = rowsFeuille1[j];
               break;
             }
           }
 
-          if (trouve) {
-            const societe       = rowData[2]  || "N/A"; 
-            const nomPrenom     = rowData[3]  || "N/A"; 
-            const photoRaw      = rowData[5]  || "";    
+          const motifsRefus = [];
 
-            // Extraction des colonnes de dates :
-            const expAssuranceRC      = rowData[5]  || "";
-            const expAssuranceAT_Phys = rowData[7]  || ""; 
-            const expHabElectrique    = rowData[9]  || "";
-            const expHabHauteur       = rowData[11] || "";
-            const expCACES            = rowData[13] || "";
-            const expTravailChaud     = rowData[15] || "";
-            const dateInductionSite   = rowData[17] || ""; 
-
-            const photoUrl = formatDriveImageUrl(photoRaw);
-            const motifsRefus = [];
-
-            // Execution des verifications
-            verifierDoc(expAssuranceRC, "Assurance RC", motifsRefus);
-            verifierDoc(expAssuranceAT_Phys, "Assurance AT / Aptitude Physique", motifsRefus);
-            verifierDoc(expHabElectrique, "Habilitation Électrique", motifsRefus);
-            verifierDoc(expHabHauteur, "Habilitation Travail en Hauteur", motifsRefus);
-            verifierDoc(expCACES, "CACES / Engins", motifsRefus);
-            verifierDoc(expTravailChaud, "Certificat Travail à Chaud", motifsRefus);
-            verifierInduction(dateInductionSite, motifsRefus);
-
-            const estConforme = motifsRefus.length === 0;
-
-            if (estConforme) {
-              document.getElementById('result').innerHTML = `
-                <div class="status-badge status-ok">CONFORMITÉ HSE VALIDÉE</div>
-                <h1 style="color:#15803d;">✔ ACCÈS AUTORISÉ</h1>
-
-                <img src="${photoUrl}" alt="Photo de profil" class="profile-photo" onerror="this.onerror=null; this.src='https://via.placeholder.com/120?text=Photo+N/A';" />
-
-                <div class="info-group">
-                  <div class="info-item"><span class="label">ID Badge :</span><span class="value">${idRecherche}</span></div>
-                  <div class="info-item"><span class="label">Nom & Prénom :</span><span class="value">${nomPrenom}</span></div>
-                  <div class="info-item"><span class="label">Société :</span><span class="value">${societe}</span></div>
-                  <div class="info-item"><span class="label">Date Induction :</span><span class="value">${dateInductionSite || "N/A"}</span></div>
-                  <div class="info-item"><span class="label">Habilitations & Doc :</span><span class="value" style="color:#15803d;">À JOUR</span></div>
-                </div>
-              `;
-            } else {
-              let listeHtml = motifsRefus.map(m => `<li>${m}</li>`).join('');
-
-              document.getElementById('result').innerHTML = `
-                <div class="status-badge status-error">HABILITATION OU DOC EXPIRÉ</div>
-                <h1 style="color:#b91c1c;">❌ ACCÈS REFUSÉ</h1>
-
-                <img src="${photoUrl}" alt="Photo de profil" class="profile-photo" style="border-color:#b91c1c;" onerror="this.onerror=null; this.src='https://via.placeholder.com/120?text=Photo+N/A';" />
-
-                <div class="info-group">
-                  <div class="info-item"><span class="label">ID Badge :</span><span class="value">${idRecherche}</span></div>
-                  <div class="info-item"><span class="label">Nom & Prénom :</span><span class="value">${nomPrenom}</span></div>
-                  <div class="info-item"><span class="label">Société :</span><span class="value">${societe}</span></div>
-                  <div class="info-item"><span class="label">Statut :</span><span class="value" style="color:#b91c1c;">NON CONFORME</span></div>
-                </div>
-
-                <div class="motifs-box">
-                  <div class="motifs-title">⚠️ Document(s) / Habilitation(s) non conforme(s) :</div>
-                  <ul class="motifs-list">
-                    ${listeHtml}
-                  </ul>
-                </div>
-              `;
-            }
+          // 3. Vérification des assurances Société (Feuille 1)
+          if (rowSociete) {
+            const expAssuranceRC = rowSociete[5] || "";
+            const expAssuranceAT = rowSociete[7] || "";
+            verifierDoc(expAssuranceRC, `Assurance RC Société (${societe})`, motifsRefus);
+            verifierDoc(expAssuranceAT, `Assurance AT Société (${societe})`, motifsRefus);
           } else {
+            motifsRefus.push(`Société "${societe}" non enregistrée dans la base Assurances`);
+          }
+
+          // 4. Vérification des habilitations individuelles Intervenant (Feuille 2)
+          verifierDoc(expAptitudePhysique, "Aptitude Physique", motifsRefus);
+          verifierDoc(expHabElectrique, "Habilitation Électrique", motifsRefus);
+          verifierDoc(expHabHauteur, "Habilitation Travail en Hauteur", motifsRefus);
+          verifierDoc(expCACES, "CACES / Engins", motifsRefus);
+          verifierDoc(expTravailChaud, "Certificat Travail à Chaud", motifsRefus);
+          verifierInduction(dateInductionSite, motifsRefus);
+
+          const photoUrl = formatDriveImageUrl(photoRaw);
+          const estConforme = motifsRefus.length === 0;
+
+          if (estConforme) {
             document.getElementById('result').innerHTML = `
-              <div class="status-badge status-error">BADGE INCONNU</div>
-              <h1 style="color:#b91c1c;">❌ ACCÈS NON AUTORISÉ</h1>
-              <p>Le badge <b>${idRecherche}</b> n'est pas enregistré dans la base de données.</p>
+              <div class="status-badge status-ok">CONFORMITÉ HSE VALIDÉE</div>
+              <h1 style="color:#15803d;">✔ ACCÈS AUTORISÉ</h1>
+
+              <img src="${photoUrl}" alt="Photo de profil" class="profile-photo" onerror="this.onerror=null; this.src='https://via.placeholder.com/120?text=Photo+N/A';" />
+
+              <div class="info-group">
+                <div class="info-item"><span class="label">ID Badge :</span><span class="value">${idRecherche}</span></div>
+                <div class="info-item"><span class="label">Nom & Prénom :</span><span class="value">${nomPrenom}</span></div>
+                <div class="info-item"><span class="label">Société :</span><span class="value">${societe}</span></div>
+                <div class="info-item"><span class="label">Date Induction :</span><span class="value">${dateInductionSite || "N/A"}</span></div>
+                <div class="info-item"><span class="label">Habilitations & Assurances :</span><span class="value" style="color:#15803d;">À JOUR</span></div>
+              </div>
+            `;
+          } else {
+            let listeHtml = motifsRefus.map(m => `<li>${m}</li>`).join('');
+
+            document.getElementById('result').innerHTML = `
+              <div class="status-badge status-error">HABILITATION OU ASSURANCE EXPIRÉE</div>
+              <h1 style="color:#b91c1c;">❌ ACCÈS REFUSÉ</h1>
+
+              <img src="${photoUrl}" alt="Photo de profil" class="profile-photo" style="border-color:#b91c1c;" onerror="this.onerror=null; this.src='https://via.placeholder.com/120?text=Photo+N/A';" />
+
+              <div class="info-group">
+                <div class="info-item"><span class="label">ID Badge :</span><span class="value">${idRecherche}</span></div>
+                <div class="info-item"><span class="label">Nom & Prénom :</span><span class="value">${nomPrenom}</span></div>
+                <div class="info-item"><span class="label">Société :</span><span class="value">${societe}</span></div>
+                <div class="info-item"><span class="label">Statut :</span><span class="value" style="color:#b91c1c;">NON CONFORME</span></div>
+              </div>
+
+              <div class="motifs-box">
+                <div class="motifs-title">⚠️ Document(s) / Habilitation(s) non conforme(s) :</div>
+                <ul class="motifs-list">
+                  ${listeHtml}
+                </ul>
+              </div>
             `;
           }
-        })
-        .catch(error => {
+        } else {
           document.getElementById('result').innerHTML = `
-            <div class="status-badge status-error">ERREUR SYSTÈME</div>
-            <h1 style="color:#b91c1c;">Erreur</h1>
-            <p>Impossible de vérifier l'état du badge.</p>
+            <div class="status-badge status-error">BADGE INCONNU</div>
+            <h1 style="color:#b91c1c;">❌ ACCÈS NON AUTORISÉ</h1>
+            <p>Le badge <b>${idRecherche}</b> n'est pas enregistré dans la base de données.</p>
           `;
-        });
+        }
+      })
+      .catch(error => {
+        document.getElementById('result').innerHTML = `
+          <div class="status-badge status-error">ERREUR SYSTÈME</div>
+          <h1 style="color:#b91c1c;">Erreur</h1>
+          <p>Impossible de vérifier l'état du badge.</p>
+        `;
+      });
     }
   </script>
 </body>
